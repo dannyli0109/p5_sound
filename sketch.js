@@ -11,10 +11,19 @@ let panelFFT;
 let panelDrumH = 200;
 let panelDrum;
 
-let outData = [];
-let diffData = [];
-let prevEnergy = 0;
+let panelControlH = 50;
+let panelControl;
+let controlPanelBtns = {
+
+}
+
 let notes = [];
+let currentNotes = [];
+let minIndex = -1;
+
+let imgs = {
+
+}
 
 class Rectangle {
     constructor(x, y, w, h) {
@@ -25,42 +34,6 @@ class Rectangle {
     }
 }
 
-function parseTJAFile(content) {
-    const lines = content.split('\r\n');
-    console.log(lines);
-    let timingOffset = 0;
-    let isTimingSection = false;
-    let timeNoteArray = [];
-
-    lines.forEach(line => {
-        if (line.startsWith("OFFSET:")) {
-            timingOffset = parseFloat(line.split(':')[1]);
-        } else if (line.startsWith("#START")) {
-            isTimingSection = true;
-        } else if (line.startsWith("#END")) {
-            isTimingSection = false;
-        } else if (isTimingSection) {
-            const part = line.split(',')[0];
-            const time = parseFloat(part) + timingOffset;
-            timeNoteArray.push([time, null]);
-        } else if (line.length > 0 && !line.startsWith("#") && !Number.isNaN(parseInt(line[0]))) {
-            console.log(line);
-            const parts = line.split(',');
-            const timeIncrement = 1 / parts.length;
-            let currentTime = 0;
-            parts.forEach(part => {
-                if (part && part !== "0") {
-                    timeNoteArray.push([timeIncrement * currentTime, parseInt(part)]);
-                }
-                currentTime++;
-            });
-        }
-    });
-
-    return timeNoteArray;
-}
-
-
 
 function drawRect(r) {
     rect(r.x, r.y, r.w, r.h);
@@ -70,17 +43,28 @@ function insideRect(r, x, y) {
     return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }
 
+function btn(txt, r, color) {
+    push();
+    fill(...color);
+    rect(r.x, r.y, r.w, r.h);
+    pop();
+
+    push();
+    fill(0);
+    textSize(20);
+
+    text(txt, r.x, r.y + r.h / 2);
+    pop();
+    return insideRect(r, mouseX, mouseY) && clicked;
+}
+
 function preload() {
     // img = loadImage('data/flower.jpg');
     song = loadSound("s1.mp3");
-
-    fetch('test.tja')
-        .then(response => response.text())
-        .then(data => {
-            // outData = parseTJAFile(data);
-            let d = parseTJAFile(data);
-            console.log(d);
-        });
+    imgs["play"] = loadImage("Play.png");
+    imgs["pause"] = loadImage("Pause.png");
+    imgs["speedUp"] = loadImage("MediumArrow-Right.png");
+    imgs["speedDown"] = loadImage("MediumArrow-Left.png");
 }
 
 function setup() {
@@ -90,89 +74,18 @@ function setup() {
     amp = new p5.Amplitude();
     amp.toggleNormalize(true);
     fft = new p5.FFT(0.8, Math.pow(2, 8));
-    peaks = song.getPeaks(width);
-    panelWave = new Rectangle(0, height - panelWaveH, width, panelWaveH);   
-    panelFFT = new Rectangle(0, height - panelWave.h - panelFFTH, width, panelFFTH);
-    panelDrum = new Rectangle(0, height - panelWave.h - panelFFT.h - panelDrumH, width, panelDrumH);
-    outData = s1;
-
-    // if notes are too close to each other, combine them with the one with the highest amplitude
-    // let combinedData = [];
-    // for (let i = 0; i < outData.length; i++) {
-    //     if (i == 0) {
-    //         combinedData.push(outData[i]);
-    //         continue;
-    //     }
-    //     let prev = outData[i - 1];
-    //     while (i < outData.length && outData[i][0] - prev[0] < 0.1) {
-    //         if (outData[i][2] > prev[2]) {
-    //             prev = outData[i];
-    //         }
-    //         i++;
-    //     }
-    //     combinedData.push(prev);
-    // }
-
-    // outData = combinedData;
-    console.log(outData);
-
-    diffData = outData;
-    diffData = outData.map((x, i) => {
-        if (i == 0) {
-            return x;
-        }
-        let prev = outData[i - 1];
-        return [x[0], x[1] - prev[1], x[2] - prev[2]];
-    });
-
-    // every 5 notes pick the one with the highest amplitude
-    // console.log(diffData);
-
-    // let maxAmplitude = 0;
-    // let maxAmplitudeIndex = 0;
-    // let maxAmplitudeData = [];
-    // for (let i = 0; i < diffData.length; i++) {
-    //     if (diffData[i][1] > maxAmplitude) {
-    //         maxAmplitude = diffData[i][1];
-    //         maxAmplitudeIndex = i;
-    //     }
-    //     if (i % 7 == 0) {
-    //         maxAmplitudeData.push(diffData[maxAmplitudeIndex]);
-    //         maxAmplitude = 0;
-    //     }
-    // }
-    // diffData = maxAmplitudeData;
-
-    diffData = diffData.filter(x => {
-        return  Math.abs(x[1]) > 7;
-    });
-
-    // combine notes that are too close to each other
-    let combinedData = [];
-    for (let i = 0; i < diffData.length; i++) {
-        if (i == 0) {
-            combinedData.push(diffData[i]);
-            continue;
-        }
-        let prev = diffData[i - 1];
-        while (i < diffData.length && diffData[i][0] - prev[0] < 0.1) {
-            if (diffData[i][2] > prev[2]) {
-                prev = diffData[i];
-            }
-            i++;
-        }
-        combinedData.push(prev);
-    }
-
-    diffData = combinedData;
-
-
-    outData = [];
+    let pW = width;
+    peaks = song.getPeaks(pW);
+    panelWave = new Rectangle(0, height - panelWaveH, pW, panelWaveH);
+    panelControl = new Rectangle(0, height - panelWave.h - panelControlH, pW, panelControlH);
+    panelFFT = new Rectangle(0, height - panelWave.h - panelControl.h - panelFFTH, pW, panelFFTH);
+    panelDrum = new Rectangle(0, height - panelWave.h - panelControl.h - panelFFT.h - panelDrumH, pW, panelDrumH);
 }
 
 function togglePlaying() {
     if (!song.isPlaying()) {
-        song.play(0, 1);
+        song.loop(0, 1);
+        song.jump(pos);
     }
     else {
         song.pause();
@@ -185,32 +98,57 @@ function draw() {
     stroke(255);
     drawRect(panelFFT);
     drawFFT(panelFFT);
+
+    drawRect(panelControl);
+    drawControl(panelControl);
+
     drawRect(panelWave);
     drawWave(panelWave, panelWaveH / 2);
-    drawRect(panelDrum);
-    push()
-    textSize(20);
-    fill(255)
-    noStroke();
-    // let getEnergyBase = fft.getEnergy("bass");
-    // text("base:" + getEnergyBase, 10, 20);
-    // let getEnergyLowMid = fft.getEnergy("lowMid");
-    // text("high:" + getEnergyLowMid, 10, 60);
-    // let getEnergyMid = fft.getEnergy("mid");
-    // text("mid:" + getEnergyMid, 10, 40);
-    // let getEnergyHigh = fft.getEnergy("highMid");
-    // text("low:" + getEnergyHigh, 10, 80);
-    // let getEnergyTreble = fft.getEnergy("treble");
-    // text("treble:" + getEnergyTreble, 10, 100);
-    let energy = fft.getEnergy(80, 250);
-    text("energy: " + Math.abs(energy - prevEnergy).toFixed(2), 10, 20);
-    // prevEnergy = energy;
 
-    pop();
+    drawRect(panelDrum);
     drawDrum(panelDrum);
+
+    // if (btn("play/pause", new Rectangle(0, 0, 100, 50), [255, 0, 0])) {
+    //     togglePlaying();
+    // }
+}
+
+function drawControl(panelControl) {
+    let imgW = panelControl.h - 10;
+    let imgH = panelControl.h - 10;
+    let btnW = panelControl.h;
+    let btnH = panelControl.h;
+    let playImgRect = new Rectangle(panelControl.w / 2 - imgW / 2, panelControl.y + (btnH - imgH) / 2, imgW, imgH);
+    let playBtnRect = new Rectangle(panelControl.w / 2 - btnW / 2, panelControl.y, btnW, btnH);
+    drawRect(playBtnRect);
+    let playImg;
+    if (song.isPlaying()) {
+        playImg = imgs["pause"];
+    }
+    else {
+        playImg = imgs["play"];
+    }
+    image(playImg, playImgRect.x, playImgRect.y, playImgRect.w, playImgRect.h);
+
+    controlPanelBtns["play"] = playBtnRect;
+
+    let speedUpBtnRect = new Rectangle(playBtnRect.x + playBtnRect.w, panelControl.y, btnW, btnH);
+    let speedUpImgRect = new Rectangle(speedUpBtnRect.x + (btnW - imgW) / 2, panelControl.y + (btnH - imgH) / 2, imgW, imgH);
+    drawRect(speedUpBtnRect);
+    image(imgs["speedUp"], speedUpImgRect.x, speedUpImgRect.y, speedUpImgRect.w, speedUpImgRect.h);
+
+
+    let speedDownBtnRect = new Rectangle(playBtnRect.x - speedUpBtnRect.w, panelControl.y, btnW, btnH);
+    let speedDownImgRect = new Rectangle(speedDownBtnRect.x + (btnW - imgW) / 2, panelControl.y + (btnH - imgH) / 2, imgW, imgH);
+    drawRect(speedDownBtnRect);
+    image(imgs["speedDown"], speedDownImgRect.x, speedDownImgRect.y, speedDownImgRect.w, speedDownImgRect.h);
+
+    controlPanelBtns["speedUp"] = speedUpBtnRect;
+    controlPanelBtns["speedDown"] = speedDownBtnRect;
 }
 
 function drawDrum(panelDrum) {
+    currentNotes = [];
     let hitSpot = panelDrum.x + panelDrum.w * 0.1;
     let circleW = panelDrum.h / 2;
     push();
@@ -220,27 +158,75 @@ function drawDrum(panelDrum) {
 
     push();
     for (let i = notes.length - 1; i >= 0; i--) {
+        let [time, speed, type] = notes[i];
+
         let nodePos = hitSpot;
         let startPos = panelDrum.x + panelDrum.w + circleW;
-        let speed = 800;
         let timeToReachNode = (startPos - nodePos) / speed;
-        let timeToStart = notes[i][0] - timeToReachNode;
+        let timeToStart = time - timeToReachNode;
         let endPos = -circleW;
         let timeToReachEnd = (startPos - endPos) / speed;
         let timeToEnd = timeToStart + timeToReachEnd;
-        if (song.currentTime() < timeToStart || song.currentTime() > timeToEnd) { 
+        if (pos < timeToStart || pos > timeToEnd) {
             continue;
         }
 
-        let currentTime = song.currentTime() - timeToStart;
+        let currentTime = pos - timeToStart;
         let newPos = startPos - speed * currentTime;
-        fill(0, 0, 255);
+        push();
+        if (type == 0) {
+            // orange
+            fill(255, 165, 0);
+        }
+        else {
+            // blue
+            fill(0, 0, 255);
+        }
         circle(newPos, panelDrum.y + panelDrum.h / 2, circleW);
+        pop();
+        currentNotes.push({
+            c: {
+                x: newPos,
+                y: panelDrum.y + panelDrum.h / 2,
+                r: circleW
+            },
+            index: i
+        });
     }
     pop();
+
+    // get min distance from mouse for current notes
+    let minDist = Infinity;
+    minIndex = -1;
+    for (let i = currentNotes.length - 1; i >= 0; i--) {
+        let { c, index } = currentNotes[i];
+        let d = dist(mouseX, mouseY, c.x, c.y);
+        if (d < minDist && d < c.r) {
+            minDist = d;
+            minIndex = i;
+        }
+    }
+
+    if (minIndex != -1) {
+        let { c, index } = currentNotes[minIndex];
+        let type = notes[index][2];
+        push();
+        if (type == 0) {
+            // orange
+            fill(255, 165, 0);
+        }
+        else {
+            // blue
+            fill(0, 0, 255);
+        }
+        stroke(255, 0, 0);
+        strokeWeight(5);
+        circle(c.x, c.y, c.r);
+        pop();
+    }
 }
 
-function drawFFT(panelFFT) {    
+function drawFFT(panelFFT) {
     let spectrum = fft.analyze();
     push();
     noStroke();
@@ -260,15 +246,35 @@ function drawWave(panelWave, maxHeight) {
         line(i, panelWave.y + panelWave.h / 2 + peaks[i] * maxHeight, i, panelWave.y + panelWave.h / 2 - peaks[i] * maxHeight);
     }
 
-    let t = map(song.currentTime(), 0, song.duration(), 0, width)
+    for (let i = 0; i < notes.length; i++) {
+        let [time, speed, type] = notes[i];
+        let t = map(time, 0, song.duration(), 0, width);
+        push();
+        if (type == 0) {
+            stroke(255, 165, 0);
+        }
+        else {
+            stroke(0, 0, 255);
+        }
+        line(t, panelWave.y + panelWave.h / 2, t, panelWave.y + panelWave.h);
+        pop();
+    }
 
-    stroke(255, 255, 190);
-    // line(t, 0, t, height);
-    line(t, panelWave.y, t, panelWave.y + panelWave.h);
+    if (song.isPlaying()) {
+        let t = map(song.currentTime(), 0, song.duration(), 0, width);
+        stroke(255, 255, 190);
+        line(t, panelWave.y, t, panelWave.y + panelWave.h);
+        pos = song.currentTime();
+    }
+    else {
+        let t = map(pos, 0, song.duration(), 0, width);
+        stroke(255, 255, 190);
+        line(t, panelWave.y, t, panelWave.y + panelWave.h);
+    }
 }
 
 function mousePressed() {
-    if (song.isPlaying()) {
+    if (insideRect(panelWave, mouseX, mouseY) && mouseButton == "left") {
         pos = map(mouseX, 0, width, 0, song.duration());
         if (pos < 0) {
             pos = 0;
@@ -280,11 +286,49 @@ function mousePressed() {
     }
 }
 
+function mouseDragged() {
+    if (insideRect(panelWave, mouseX, mouseY) && mouseButton == "left") {
+        pos = map(mouseX, 0, width, 0, song.duration());
+        if (pos < 0) {
+            pos = 0;
+        }
+        if (pos > song.duration()) {
+            pos = song.duration();
+        }
+        song.jump(pos);
+    }
+}
+
+function mouseClicked() {
+
+    if (insideRect(controlPanelBtns["play"], mouseX, mouseY) && mouseButton == "left") {
+        togglePlaying();
+    }
+
+    if (insideRect(controlPanelBtns["speedUp"], mouseX, mouseY) && mouseButton == "left") {
+        song.rate(song.rate() + 0.1);
+    }
+
+    if (insideRect(controlPanelBtns["speedDown"], mouseX, mouseY) && mouseButton == "left") {
+        song.rate(song.rate() - 0.1);
+    }
+
+    if (insideRect(panelDrum, mouseX, mouseY) && mouseButton == "left") {
+        if (minIndex != -1) {
+            notes.splice(currentNotes[minIndex].index, 1);
+        }
+    }
+}
+
+
 function keyPressed() {
-    if (keyCode === ENTER) {
-        if(song.isPlaying) {
-            notes.push([song.currentTime(), 400]);
-            nodes.sort((a, b) => a[0] - b[0]);
-        }   
+    if (key === "x") {
+        notes.push([pos, 400, 0]);
+        notes.sort((a, b) => a[0] - b[0]);
+    }
+
+    if (key === "c") {
+        notes.push([pos, 400, 1]);
+        notes.sort((a, b) => a[0] - b[0]);
     }
 }

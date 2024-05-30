@@ -20,10 +20,16 @@ let controlPanelBtns = {
 let notes = [];
 let currentNotes = [];
 let minIndex = -1;
+let rate = 1;
 
 let imgs = {
 
 }
+
+let spd = 400;
+
+let input;
+let loadInput;
 
 class Rectangle {
     constructor(x, y, w, h) {
@@ -60,32 +66,55 @@ function btn(txt, r, color) {
 
 function preload() {
     // img = loadImage('data/flower.jpg');
-    song = loadSound("s1.mp3");
+    // song = loadSound("s1.mp3");
     imgs["play"] = loadImage("Play.png");
     imgs["pause"] = loadImage("Pause.png");
     imgs["speedUp"] = loadImage("MediumArrow-Right.png");
     imgs["speedDown"] = loadImage("MediumArrow-Left.png");
+    imgs["save"] = loadImage("./1x/Asset 1.png");
+    imgs["load"] = loadImage("./1x/Asset 25.png");
+    imgs["plus"] = loadImage("./1x/Asset 43.png");
 }
 
 function setup() {
     createCanvas(800, 800);
-    button = createButton("play/pause");
-    button.mousePressed(togglePlaying);
     amp = new p5.Amplitude();
     amp.toggleNormalize(true);
     fft = new p5.FFT(0.8, Math.pow(2, 8));
     let pW = width;
-    peaks = song.getPeaks(pW);
+    // peaks = song.getPeaks(pW);
     panelWave = new Rectangle(0, height - panelWaveH, pW, panelWaveH);
     panelControl = new Rectangle(0, height - panelWave.h - panelControlH, pW, panelControlH);
     panelFFT = new Rectangle(0, height - panelWave.h - panelControl.h - panelFFTH, pW, panelFFTH);
     panelDrum = new Rectangle(0, height - panelWave.h - panelControl.h - panelFFT.h - panelDrumH, pW, panelDrumH);
+    createP("加载音频文件");
+    input = createFileInput(handleFile);
+    createP("加载谱面数据.json文件");
+    loadInput = createFileInput(hanleDataFile);
+}
+
+function hanleDataFile(file) {
+    notes = file.data.notes;
+    notes.sort((a, b) => a[0] - b[0]);
+}
+
+function handleFile(file) {
+    if (file.type === 'audio') {
+        song = loadSound(file.data, () => {
+            peaks = song.getPeaks(width);
+            notes = [];
+        });
+    }
+    else {
+        console.log("not an audio file");
+    }
 }
 
 function togglePlaying() {
     if (!song.isPlaying()) {
         song.loop(0, 1);
         song.jump(pos);
+        song.rate(rate);
     }
     else {
         song.pause();
@@ -93,6 +122,7 @@ function togglePlaying() {
 }
 
 function draw() {
+    if (!song || !song.isLoaded()) return;
     background(51);
     fill(0);
     stroke(255);
@@ -107,6 +137,14 @@ function draw() {
 
     drawRect(panelDrum);
     drawDrum(panelDrum);
+
+    push();
+    noStroke();
+    fill(255);
+    textSize(20);
+    text("rate: " + song.rate().toFixed(1), 10, 30);
+    text("spd: " + spd.toFixed(0), 10, 50);
+    pop();
 
     // if (btn("play/pause", new Rectangle(0, 0, 100, 50), [255, 0, 0])) {
     //     togglePlaying();
@@ -145,6 +183,34 @@ function drawControl(panelControl) {
 
     controlPanelBtns["speedUp"] = speedUpBtnRect;
     controlPanelBtns["speedDown"] = speedDownBtnRect;
+
+    let saveBtnRect = new Rectangle(panelControl.w - btnW, panelControl.y, btnW, btnH);
+    let saveImgRect = new Rectangle(saveBtnRect.x + (btnW - imgW) / 2, panelControl.y + (btnH - imgH) / 2, imgW, imgH);
+    drawRect(saveBtnRect);
+    image(imgs["save"], saveImgRect.x, saveImgRect.y, saveImgRect.w, saveImgRect.h);
+
+    controlPanelBtns["save"] = saveBtnRect;
+
+    let plusBtnRect = new Rectangle(speedUpBtnRect.x + speedUpBtnRect.w, panelControl.y, btnW, btnH);
+    let plusImgRect = new Rectangle(plusBtnRect.x + (btnW - imgW) / 2, panelControl.y + (btnH - imgH) / 2, imgW, imgH);
+    drawRect(plusBtnRect);
+    image(imgs["plus"], plusImgRect.x, plusImgRect.y, plusImgRect.w, plusImgRect.h);
+
+    controlPanelBtns["plus"] = plusBtnRect;
+
+    let minusBtnRect = new Rectangle(speedDownBtnRect.x - speedDownBtnRect.w, panelControl.y, btnW, btnH);
+    let minusImgRect = new Rectangle(minusBtnRect.x + (btnW - imgW) / 2, panelControl.y + (btnH - imgH) / 2, imgW, imgH);
+    drawRect(minusBtnRect);
+    // filp the image
+    push();
+    translate(minusImgRect.x + imgW / 2, minusImgRect.y + imgH / 2);
+    scale(-1, 1);
+    image(imgs["plus"], -imgW / 2, -imgH / 2, imgW, imgH);
+    pop();
+
+    controlPanelBtns["minus"] = minusBtnRect;
+
+
 }
 
 function drawDrum(panelDrum) {
@@ -300,35 +366,58 @@ function mouseDragged() {
 }
 
 function mouseClicked() {
-
+    // play
     if (insideRect(controlPanelBtns["play"], mouseX, mouseY) && mouseButton == "left") {
         togglePlaying();
     }
 
+    // speed up
     if (insideRect(controlPanelBtns["speedUp"], mouseX, mouseY) && mouseButton == "left") {
-        song.rate(song.rate() + 0.1);
+        rate = song.rate() + 0.1;
+        song.rate(rate);
     }
 
+    // speed down
     if (insideRect(controlPanelBtns["speedDown"], mouseX, mouseY) && mouseButton == "left") {
-        song.rate(song.rate() - 0.1);
+        rate = song.rate() - 0.1;
+        song.rate(rate);
     }
 
+    // delete note
     if (insideRect(panelDrum, mouseX, mouseY) && mouseButton == "left") {
         if (minIndex != -1) {
             notes.splice(currentNotes[minIndex].index, 1);
         }
     }
-}
+
+    // save
+    if (insideRect(controlPanelBtns["save"], mouseX, mouseY) && mouseButton == "left") {
+        let data = {
+            notes: notes
+        }
+        saveJSON(data, "data.json");
+    }
+
+    // plus
+    if (insideRect(controlPanelBtns["plus"], mouseX, mouseY) && mouseButton == "left") {
+        spd += 50;
+    }
+
+    // minus
+    if (insideRect(controlPanelBtns["minus"], mouseX, mouseY) && mouseButton == "left") {
+        spd -= 50;
+    }
+}   
 
 
 function keyPressed() {
     if (key === "x") {
-        notes.push([pos, 400, 0]);
+        notes.push([pos, spd, 0]);
         notes.sort((a, b) => a[0] - b[0]);
     }
 
     if (key === "c") {
-        notes.push([pos, 400, 1]);
+        notes.push([pos, spd, 1]);
         notes.sort((a, b) => a[0] - b[0]);
     }
 }

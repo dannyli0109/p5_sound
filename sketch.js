@@ -393,7 +393,8 @@ function mouseClicked() {
     // save
     if (insideRect(controlPanelBtns["save"], mouseX, mouseY) && mouseButton == "left") {
         let data = {
-            notes: notes
+            notes: notes,
+            d: packJSON()
         }
         saveJSON(data, "data.json");
     }
@@ -420,4 +421,16 @@ function keyPressed() {
         notes.push([pos, spd, 1]);
         notes.sort((a, b) => a[0] - b[0]);
     }
+}
+
+function packJSON() {
+    let out = "";
+    for (let i = 0; i < notes.length; i++) {
+        let [time, speed, type] = notes[i];
+        out += time + "|" + speed + "|" + type;
+        if (i != notes.length - 1) {
+            out += "||";
+        }
+    }
+    return out;
 }
